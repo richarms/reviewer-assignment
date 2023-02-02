@@ -35,12 +35,12 @@ def main(args, loglevel):
 
     # ---- LOAD
     # load the list of proposals and their categories into a dataframe
-    df_cat = pd.read_csv("proposal_scientific_categories_MKT-22.csv", sep=";")
+    df_cat = pd.read_csv("csv/proposal_scientific_categories_MKT-22.csv", sep=";")
     df_cat["Category_List"] = df_cat["CATEGORY LIST"].apply(lambda x: eval(x))
     n_p = n_proposals = len(df_cat)
 
     # load the reviewer conflict dataframe
-    df_conflict = pd.read_csv("science_cross_check_MKT-22.csv", sep=";")
+    df_conflict = pd.read_csv("csv/science_cross_check_MKT-22.csv", sep=";")
     df_conflict["Proposals"] = df_conflict["PROPOSAL LIST"].apply(
         lambda x: x.strip("][").split(",")
     )
@@ -48,16 +48,18 @@ def main(args, loglevel):
 
     # load observation categories for proposals and reviewers
     roe = np.genfromtxt(
-        "reviewer_observation_expertise_MKT-22.csv", delimiter=",", skip_header=1
+        "csv/reviewer_observation_expertise_MKT-22.csv", delimiter=",", skip_header=1
     )
     poc = np.genfromtxt(
-        "proposal_observation_categories_MKT-22.csv", delimiter=",", skip_header=1
+        "csv/proposal_observation_categories_MKT-22.csv", delimiter=",", skip_header=1
     )
 
     # load the self-identified reviewer competency scores per catagory into a dataframe
-    df_rev_score = pd.read_csv("reviewer_scientific_expertise_MKT-22.csv")
+    df_rev_score = pd.read_csv("csv/reviewer_scientific_expertise_MKT-22.csv")
     # df_rev_score.index = df_rev_score['REVIEWER ID']
-    rev_score = genfromtxt("reviewer_scientific_expertise_MKT-22.csv", delimiter=",")
+    rev_score = genfromtxt(
+        "csv/reviewer_scientific_expertise_MKT-22.csv", delimiter=","
+    )
 
     # Create vector with max number of reviews per reviewer
     n_r = n_reviewers = len(df_rev_score)
@@ -68,7 +70,7 @@ def main(args, loglevel):
         "N_max"
     ] = reviewers_props  # Make column with max number of reviews for each reviewer
 
-    scientific_categories = pd.read_csv("scientific_categories_MKT-22.csv")
+    scientific_categories = pd.read_csv("csv/scientific_categories_MKT-22.csv")
     scientific_categories.index = scientific_categories["CATEGORY ID"]
 
     df_rev_score.columns = [
@@ -176,7 +178,7 @@ def main(args, loglevel):
 
     fig.legend()
     plt.xlabel("category label")
-    plt.savefig("relative_stress.png")
+    plt.savefig("png/relative_stress.png")
 
     # Make a bar plot of all the proposal categories and binary reviewer expertise
 
@@ -204,7 +206,7 @@ def main(args, loglevel):
 
     plt.xlabel("category label")
     fig.legend()
-    plt.savefig("rev_expertise.png")
+    plt.savefig("png/rev_expertise.png")
 
     # ---------------
     # AFFINITY MATRIX
@@ -257,10 +259,10 @@ def main(args, loglevel):
 
     # Observation Category
     rev_obs_exp = np.genfromtxt(
-        "reviewer_observation_expertise_MKT-22.csv", delimiter=",", skip_header=1
+        "csv/reviewer_observation_expertise_MKT-22.csv", delimiter=",", skip_header=1
     )
     prop_obs_cat = np.genfromtxt(
-        "proposal_observation_categories_MKT-22.csv", delimiter=",", skip_header=1
+        "csv/proposal_observation_categories_MKT-22.csv", delimiter=",", skip_header=1
     )[:, 1]
     # print(prop_obs_cat)
 
@@ -316,7 +318,9 @@ def main(args, loglevel):
     # --------------------------------------------------------------------------------------------
 
     # assign the maximum number of proposals per reviewer
-    loads = np.genfromtxt("science_max_reviews.csv", skip_header=1, delimiter=",")[:, 1]
+    loads = np.genfromtxt("csv/science_max_reviews.csv", skip_header=1, delimiter=",")[
+        :, 1
+    ]
 
     # set the lower bound of proposals to review to be 10
     loads_lb = LOADS_LB * np.ones(affinity.shape[0])
@@ -374,11 +378,73 @@ def main(args, loglevel):
     # -- LP
     res = scipy.optimize.linprog(
         -a, A_ub=K, b_ub=d, bounds=(0, 1), options={"disp": True}
-    )  # , integrality=3)
-    # res = scipy.optimize.linprog(-a, A_ub=N, b_ub=c, bounds=(0,1), options={'disp': True})#, integrality=3)
+    )
+    # res = scipy.optimize.linprog(
+    #    -a, A_ub=N, b_ub=c, bounds=(0, 1), options={"disp": True}, integrality=3)
 
-    B = res.x.reshape(affinity.shape)
-    # plt.imshow(B)
+    # plt.imshow(assignment)
+
+    # The assignment matrix is a binary array of dim n_reviewers * n_proposals
+    assignment = res.x.reshape(affinity.shape)
+    assignment = assignment.astype(int)
+    # assignment[np.where(og_rev_idx==40)].nonzero()
+
+    ## Sanity check -- check that the trace of the affinity and assignment match that produced by LP
+    logging.debug(
+        f"Sanity check: trace of the affinity and assignment matrices match that \
+         produced by LP: {np.sum(np.diag(np.matmul(np.transpose(affinity), assignment)))} \
+         should be == {np.trace(np.matmul(np.transpose(affinity), assignment))}"
+    )
+
+    # Gene Matrix
+    ################
+
+    # The assignment matrix may be expressed as a 'gene matrix' (an inherited term): a dense array
+    # of reviewers assigned to each proposal, (as opposed to the assignment matrix, which is a sparse binary
+    # array of dim n_reviewers * n_proposals with nonzero entries for a positive assignment)
+    gene_matrix = np.zeros((n_proposals, COVERAGE))
+    gene_matrix_indexes = np.zeros((n_proposals, COVERAGE))
+
+    # original reviewer index
+    # og_rev_idx = np.array(df_rev_score['CATEGORY ID'])
+
+    # The reviewer_assignment is the logical opposite of the gene matrix: for each reviewer,
+    # it is a list of their associated proposals
+    reviewer_assignment = np.empty((n_reviewers), dtype=object)
+
+    # set the first element of the reviewer assignment vector to be the original reviewer
+    # index, as a string
+    for idx, r in enumerate(reviewer_assignment):
+        reviewer_assignment[idx] = str(og_rev_idx[idx])
+
+    for col_idx, col in enumerate(assignment.transpose()):
+        # set the gene matrix to the indices of each non-zero element in the assignment
+        gene_matrix[col_idx] = np.nonzero(col)[0]
+        # set up the correct original reviewer IDs
+        for rev_idx, rev in enumerate(gene_matrix[col_idx]):
+            gene_matrix_indexes[col_idx][rev_idx] = og_rev_idx[int(rev)]
+        # augment the string with each fo the {n_min, n_max} proposals that reviewer should review
+        for i in np.nonzero(col)[0]:
+            reviewer_assignment[i] = (
+                reviewer_assignment[i] + ", " + df_cat["PSS ID"][col_idx]
+            )
+
+    gene_matrix = gene_matrix.astype(int)
+    gene_matrix_indexes = gene_matrix_indexes.astype(int)
+
+    logging.debug(
+        f'LP result, expressed as a set of (4) reviewers (by original ID) \
+        per proposal: \n {np.column_stack((df_cat["PSS ID"], gene_matrix_indexes))}'
+    )
+
+    # Save proposal assignments and reviewer assignemnts to CSV files
+    logging.info("Saving proposal assignments and reviewer assignments to CSV")
+    pd.DataFrame(
+        np.column_stack((df_cat["PSS ID"], gene_matrix_indexes.astype(int)))
+    ).to_csv("csv/Proposal_assignment.csv")
+    pd.DataFrame(np.column_stack((og_rev_idx, reviewer_assignment))).to_csv(
+        "csv/Reviewer_assignment.csv"
+    )
 
 
 if __name__ == "__main__":
