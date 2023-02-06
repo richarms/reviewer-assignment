@@ -9,23 +9,22 @@ February 2023
 Reviewer assignment following Taylor, 2008 for a set of MeerKAT Proposals with some
 specific requirements:
 
-* Reviewers must have between 10 and 20 proposals to review 
-* Some reviewers have requested a maximum of 10 proposals
-* Proposals are reviewed exactly 4 times each
-* Must exclude reviewers from reviewing proposals they are involved in
+* Reviewers must have between 10 and 20 proposals to review. 
+* Some reviewers have requested a maximum of 10 proposals.
+* Proposals are reviewed exactly 4 times each.
+* Exclude reviewers from reviewing proposals they are involved in.
 """
 
-import sys, argparse, logging
+import argparse, logging, sys
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.optimize
-import matplotlib.pyplot as plt
 
 from numpy import genfromtxt
 
 
 def main(args, loglevel):
-
     logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
 
     # load the list of proposals and their categories into a dataframe
@@ -113,8 +112,7 @@ def main(args, loglevel):
             all_topics_count[topic - 1] += 1
             all_topics_list.append(topic)
 
-    fig, ax = plt.subplots()  # figsize=(16,8))
-
+    fig, ax = plt.subplots()
     ax.bar(
         range(1, rev_scores.shape[0] + 1),
         [row.sum() for row in rev_scores],
@@ -129,8 +127,6 @@ def main(args, loglevel):
         color="r",
         width=0.4,
     )
-    # ax.hist(np.array(all_topics_list), histtype='step', linewidth=3, align='mid', bins=1000, label = 'category demand')
-
     ax.yaxis.set_label_position("right")
     ax.yaxis.tick_right()
     ax.bar(
@@ -143,13 +139,11 @@ def main(args, loglevel):
         label="relative stress",
         color="k",
     )
-
     fig.legend()
     plt.xlabel("category label")
     plt.savefig("png/relative_stress.png")
 
     # Make a bar plot of all the proposal categories and binary reviewer expertise
-
     fig, ax = plt.subplots()
     ax.bar(
         range(1, 14),
@@ -171,7 +165,6 @@ def main(args, loglevel):
         color="r",
         width=0.4,
     )
-
     plt.xlabel("category label")
     fig.legend()
     plt.savefig("png/rev_expertise.png")
@@ -288,13 +281,12 @@ def main(args, loglevel):
                 Nr[rdx][rdx * n_pap + pdx] = 1
 
     I = np.identity(n_pap * n_rev)
+    N = np.vstack((Np, Nr, -Nr))
     K = np.vstack((Np, Nr, -Nr, I, -I))
-    N = np.vstack((Np, Nr))
 
     cp = args.COVERAGE * np.ones(n_pap)
     cr = loads
     crlb = args.LOADS_LB * np.ones(n_rev)
-
     c = np.concatenate((cp, cr, crlb))
 
     zeroes = np.zeros(I.shape[0])
@@ -303,7 +295,7 @@ def main(args, loglevel):
 
     assert (Np @ a).shape == cp.shape
     assert (Nr @ a).shape == cr.shape
-    # assert (N @ a).shape == c.shape
+    assert (N @ a).shape == c.shape
 
     assert (I @ a).shape == ones.shape
     assert (-I @ a).shape == zeroes.shape
@@ -334,7 +326,7 @@ def main(args, loglevel):
     gene_matrix = np.zeros((n_proposals, args.COVERAGE))
     gene_matrix_indexes = np.zeros((n_proposals, args.COVERAGE))
 
-    # The reviewer_assignment is the logical opposite of the gene matrix: for each reviewer,
+    # The reviewer_assignment is the transpose of the gene matrix: for each reviewer,
     # it is a list of their associated proposals
     reviewer_assignment = np.empty((n_reviewers), dtype=object)
 
@@ -409,8 +401,15 @@ def main(args, loglevel):
         rev_max_arr[cell_idx] = rev_a
         hi_cont_arr[cell_idx] = hi_a
 
-    logging.debug('Fernando\'s matrix zeros: ', rev_max_arr.flatten().shape[0] - np.count_nonzero(rev_max_arr))
-    logging.debug('Fernando\'s Extended zeros: ', len(all_assigned_affinities) - np.count_nonzero(np.array(all_assigned_affinities)))
+    logging.debug(
+        "Fernando's matrix zeros: ",
+        rev_max_arr.flatten().shape[0] - np.count_nonzero(rev_max_arr),
+    )
+    logging.debug(
+        "Fernando's Extended zeros: ",
+        len(all_assigned_affinities)
+        - np.count_nonzero(np.array(all_assigned_affinities)),
+    )
 
     fig, ax = plt.subplots()
     ax.hist(
@@ -429,17 +428,30 @@ def main(args, loglevel):
         linewidth=5,
         label="best category match",
         color="w",
-    )  # .sum(axis=0)
+    )
     fig.legend()
 
-    logging.debug('Extended: mean, median:', np.mean(all_assigned_affinities), np.median(all_assigned_affinities))
-    logging.debug(np.sum(all_assigned_affinities), len(all_assigned_affinities), np.sum(all_assigned_affinities)/len(all_assigned_affinities))
+    logging.debug(
+        "Extended: mean, median:",
+        np.mean(all_assigned_affinities),
+        np.median(all_assigned_affinities),
+    )
+    logging.debug(
+        np.sum(all_assigned_affinities),
+        len(all_assigned_affinities),
+        np.sum(all_assigned_affinities) / len(all_assigned_affinities),
+    )
 
     rev_max_arr = rev_max_arr.astype(int)
     logging.info(
         f"Fernando's matrix: mean, median, minimum sum: {np.median(rev_max_arr)}, {np.mean(rev_max_arr)}, {np.min(rev_max_arr.sum(axis=1))}"
     )
-    logging.debug('argmin: ', np.argmin(rev_max_arr.sum(axis=1)), ',sum: ', rev_max_arr.sum(axis=1))
+    logging.debug(
+        "argmin: ",
+        np.argmin(rev_max_arr.sum(axis=1)),
+        ",sum: ",
+        rev_max_arr.sum(axis=1),
+    )
     logging.debug(np.column_stack((rev_max_arr, df_cat["PSS ID"])))
     plt.savefig("png/Fernandos_hist.png")
 
@@ -453,7 +465,6 @@ def main(args, loglevel):
         color="k",
         label="overall reviewer expertise per proposal",
     )
-    # bins=1+np.max(rev_max_arr.sum(axis=1))-np.min(rev_max_arr.sum(axis=1))
     plt.legend()
     plt.savefig("png/total_reviewer_expertise_per_proposal_hist.png")
 
