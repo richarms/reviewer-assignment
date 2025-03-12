@@ -102,7 +102,7 @@ def main(args, loglevel):
     rev_scores = np.array(df_rev_score.transpose())[1:-1]
     np.count_nonzero(rev_scores), rev_scores.shape[0], rev_scores.shape[1]
 
-    # ------ PLOTS
+    '''# ------ PLOTS
     # Make a bar plot of all the proposal categories and numerical reviewer expertise
     all_topics_list = []
     all_topics_count = np.zeros(df_rev_score.transpose()[1:-1].shape[0])
@@ -168,6 +168,7 @@ def main(args, loglevel):
     plt.xlabel("category label")
     fig.legend()
     plt.savefig("png/rev_expertise.png")
+    '''
 
     # ---------------
     # AFFINITY MATRIX
@@ -185,21 +186,31 @@ def main(args, loglevel):
         affinity.flatten().shape[0],
     )
 
+    def logarithmic_weights(length, base=np.e, offset=1):
+        raw_weights = np.array([1 / np.log(i + offset + 1) / np.log(base) for i in range(length)])
+        normalized_weights = raw_weights / np.sum(raw_weights)
+        return normalized_weights
+    
     # set the affinity to the MAXimum of ANY keyword
-    max = 0
     for row_idx, row in enumerate(affinity):
         # print(row_idx, row)
         # for cell_idx, cell in enumerate(row):
         for cell_idx, topic_set in enumerate(df_cat["Category_List"]):
             # print(topic_set, cell_idx)
-            for topic in topic_set:
+            weights = logarithmic_weights(len(topic_set), base=np.e, offset=1)
+            max = 0
+            sum = 0
+            for idx, topic in enumerate(topic_set):
                 # print(topic)
-                max = np.maximum(max, rev_scores[topic - 1][row_idx])
+                val = rev_scores[topic - 1][row_idx]
+                max = np.maximum(max, val)
+                sum += weights[idx] * val
                 # if ((topic != 14) and (topic != 15)):
                 # max = np.maximum(max, df_rev_score[topic][row_idx+1])
                 # NOTE only consider the 13 subject categories
-            affinity[row_idx, cell_idx] = max / 10  # normalise to between 0 and 1
-            max = 0
+            print(max, sum)
+            affinity[row_idx, cell_idx] = sum / 10  # normalise to between 0 and 1
+            
 
     logging.debug(
         "set up affinities done",
@@ -363,7 +374,7 @@ def main(args, loglevel):
     pd.DataFrame(np.column_stack((og_rev_idx, reviewer_assignment))).to_csv(
         "csv/Reviewer_assignment.csv"
     )
-
+    '''
     # -----------
     # Fernando's Matrix and plots
     # -----------
@@ -483,6 +494,7 @@ def main(args, loglevel):
     )
     plt.legend()
     plt.savefig("png/reviewers_hist.png")
+    '''
 
 
 if __name__ == "__main__":
